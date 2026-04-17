@@ -1,0 +1,646 @@
+---
+title: "Second research report"
+format: 
+  html:
+    self_contained: true
+    toc: true
+    embed-resources: true
+editor: visual
+author: Romaissae Kharrab
+date: 22 Mars 2026
+---
+
+```{r setup, include=FALSE}
+
+#This chunk of code does not do anything to our data. This code basically sets up the Quarto interface (which determines how the document looks when you render it)
+#Basically, the code below determines whether the document should show the code and warning messages. 
+
+knitr::opts_chunk$set(
+  echo = TRUE,        # Don't show R code
+  results = "show",    # Don't show output by default
+  message = FALSE,     # Hide messages (e.g., from library calls)
+  warning = FALSE      # Hide warnings
+)
+```
+
+```{r}
+
+rm(list=ls()) #This line of code cleans the environment
+
+# Load libraries (or packages):
+library(tidyverse) #This library contains the most important functions you'll be using, download it everytime
+library(patchwork)  # This library is very useful to combine multiple plots into one
+#Load the dataset:
+dataset = read_csv("findex_microdata_2025.csv")
+```
+
+## Introduction
+
+The Covid-19 crisis highlighted the financial vulnerability of many households, marked by job losses, lower incomes and, for some, an inability to cover essential expenses. Yet, when facing the same shock, household trajectories differ clearly, since some households manage to absorb the shock, while others quickly fall into precariousness.
+
+Therefore, a central question arises, namely to what extent preventive financial risk management behaviors, such as saving or insurance, help households better withstand these shocks. Beyond its academic interest, this question is directly linked to financial inclusion policies, social protection and the growing role of financial tools in securing households’ economic trajectories.
+
+This hypothesis is based on the idea that a household that anticipates financial risks more is, in principle, better equipped with resources or protection mechanisms when the shock occurs. It is therefore expected that a higher level of preventive risk management will be associated with a better ability of households to cope with an income shock.
+
+## Descriptive Statistics
+
+The dataset used in this study comes from the Global Findex database (World Bank, 2024). It contains 144,090 observations and includes a wide range of variables related to financial inclusion, such as savings behavior, insurance usage, and the ability to cope with financial shocks. The data covers multiple countries across different regions of the world, including Africa, Asia, Europe, and Latin America. It provides harmonized information at the individual level, allowing for cross-country comparisons of financial behavior.
+
+This study uses the variable fin24b to measure financial resilience because it shows how long a household can keep covering its expenses if it loses its main source of income. We chose this variable because it directly reflects the household’s ability to cope with an income shock.
+
+```{r}
+library(tidyverse)
+library(knitr)
+
+# Recode fin24b using its value labels
+dataset <- dataset %>%
+  mutate(
+    fin24b_label = case_when(
+      fin24b == 1 ~ "Less than two weeks",
+      fin24b == 2 ~ "About one month",
+      fin24b == 3 ~ "About two months",
+      fin24b == 4 ~ "More than two months",
+      fin24b == 5 ~ "Don't know",
+      fin24b == 6 ~ "Refused",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Keep only informative categories for the descriptive analysis
+fin24b_table <- dataset %>%
+  filter(fin24b_label %in% c(
+    "Less than two weeks",
+    "About one month",
+    "About two months",
+    "More than two months"
+  )) %>%
+  count(fin24b_label) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 2)
+  )
+
+# Order the categories
+fin24b_table$fin24b_label <- factor(
+  fin24b_table$fin24b_label,
+  levels = c(
+    "Less than two weeks",
+    "About one month",
+    "About two months",
+    "More than two months"
+  )
+)
+
+# Display the table using kable
+kable(
+  fin24b_table,
+  col.names = c("Expense coverage period", "Count", "Percentage"),
+  caption = "Table 1: Distribution of households by ability to cover expenses after an income shock"
+)
+
+
+```
+
+```{r}
+# Visualize fin24b 
+ggplot(fin24b_table, aes(x = fin24b_label, y = percent)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = paste0(percent, "%")),
+            vjust = -0.3, size = 4) +
+  labs(
+    title = "Figure 1: Distribution of households by ability\nto cover expenses after an income shock",
+    x = "Expense coverage period",
+    y = "Percentage of households"
+  ) +
+  scale_y_continuous(limits = c(0, 100)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+Households do not all have the same level of financial resilience. The largest group can cover their expenses for more than two months after an income shock (32.95%), while 29.44% can do so for about one month. In contrast, 19.09% can cover their expenses for less than two weeks, which shows that many households are still financially vulnerable.
+
+Regarding the explanatory variable, preventive financial risk management is measured using an index that goes from 0 to 1. This index is built as the average of two indicators that show financial protection actions taken before a shock happens, such as saving during the year and making regular insurance payments. We grouped these variables into one index to capture, in a broader way, how prepared households are for a possible loss of income.
+
+```{r}
+library(tidyverse)
+
+# Recode the variables into binary values
+dataset <- dataset %>%
+  mutate(
+    save_year = ifelse(fin18 == 1, 1,
+                       ifelse(fin18 == 2, 0, NA)),
+    
+    insurance_payment = ifelse(fin19 == 1, 1,
+                               ifelse(fin19 == 2, 0, NA))
+  )
+
+
+# Build the index as the average of the two variables
+
+dataset <- dataset %>%
+  mutate(
+    preventive_risk_index = ifelse(
+      is.na(save_year) |  is.na(insurance_payment),
+      NA,
+      (save_year + insurance_payment) / 2
+    )
+  )
+
+
+```
+
+```{r}
+index_table_clean <- dataset %>%
+  # Exclude observations with missing values for the preventive risk index
+  filter(!is.na(preventive_risk_index)) %>%
+  
+  mutate(
+    # Recode the numeric index into meaningful preventive behavior categories
+    preventive_label = case_when(
+      preventive_risk_index == 0   ~ "No preventive behavior",
+      preventive_risk_index == 0.5 ~ "Either insurance or savings",
+      preventive_risk_index == 1   ~ "Full preventive behavior"
+    ),
+    
+    # Set the category order to ensure a logical display in the graph
+    preventive_label = factor(
+      preventive_label,
+      levels = c(
+        "No preventive behavior",
+        "Either insurance or savings",
+        "Full preventive behavior"
+      )
+    )
+  ) %>%
+  
+  # Count the number of households in each category
+  count(preventive_label) %>%
+  
+  # Convert counts into percentages
+  mutate(percent = 100 * n / sum(n))
+
+# Plot percentages
+ggplot(index_table_clean, aes(x = preventive_label, y = percent)) +
+  geom_col(fill = "steelblue") +
+  
+  # Add title and axis labels
+  labs(
+    title = "Figure 2: Distribution of preventive risk management\nbehaviors",
+    x = "Preventive behavior level",
+    y = "Percentage of households"
+  ) +
+  scale_y_continuous(limits = c(0, 100)) + 
+  
+  theme_minimal() +
+  
+  # Rotate x-axis labels to improve readability
+  theme(
+    axis.text.x = element_text(angle = 30, hjust = 1)
+  )
+```
+
+The graph shows that most households have no preventive behavior, meaning they have neither insurance nor savings. A smaller share shows partial protection, meaning they rely on either insurance or savings, but not both. Only a very small proportion has full protection, which shows that very few households combine both insurance and savings.
+
+```{r}
+library(tidyverse)
+
+# Recode fin24b with labels (if not already done)
+dataset <- dataset %>%
+  mutate(
+    fin24b_label = case_when(
+      fin24b == 1 ~ "Less than two weeks",
+      fin24b == 2 ~ "About one month",
+      fin24b == 3 ~ "About two months",
+      fin24b == 4 ~ "More than two months",
+      TRUE ~ NA_character_
+    ),
+    preventive_label = case_when(
+      preventive_risk_index == 0   ~ "No\npreventive\nbehavior",
+      preventive_risk_index == 0.5 ~ "Either\ninsurance\nor savings",
+      preventive_risk_index == 1   ~ "Full\npreventive\nbehavior"
+    ),
+    
+    # Set the category order to ensure a logical display in the graph
+    preventive_label = factor(
+      preventive_label,
+      levels = c(
+        "No\npreventive\nbehavior",
+        "Either\ninsurance\nor savings",
+        "Full\npreventive\nbehavior"
+      )
+    )
+  )
+  
+
+# Create proportions by index
+plot_data <- dataset %>%
+  filter(!is.na(fin24b_label), !is.na(preventive_label)) %>%
+  count(preventive_label, fin24b_label) %>%
+  group_by(preventive_label) %>%
+  mutate(percent = 100 * n / sum(n)) %>%
+  ungroup()
+
+# Plot
+ggplot(plot_data, aes(x = fin24b_label, y = percent, fill = fin24b_label)) +
+  geom_col() +
+  facet_wrap(~ preventive_label) +
+  labs(
+    title = "Figure 3: Financial resilience by preventive\nrisk management level",
+    x = "Financial resilience category",
+    y = "Percentage of households",
+    fill = "Category"
+  ) +
+  scale_y_continuous(limits = c(0, 50), breaks = seq(0, 100, 10)) +
+  
+  theme_minimal() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+```
+
+The Figure 3 shows a clear link between preventive behavior and financial resilience. As we move from no preventive behavior to full preventive behavior, the share of households that can cover expenses for more than two months increases. At the same time, the share of households that can cover less than two weeks decreases. This means that households with no protection are more vulnerable, while those with both insurance and savings are better prepared for an income shock.
+
+## Statistical Inference
+
+To analyze the link between preventive financial behaviors and household resilience, we use a linear mixed regression. Linear regression is a statistical method that measures how much one variable explains another. It fits our case well for two reasons. First, our outcome variable, financial resilience, is measured on a scale that goes from "less than two weeks" to "more than two months". This scale follows a clear and logical order, which allows us to treat it as a numeric variable. Second, our goal is to measure the effect of preventive behavior on this scale, which is exactly what linear regression does. We use a "mixed" version of this model because our data covers several regions of the world. Two households living in the same region tend to be more similar to each other than two households living in different regions. The mixed model accounts for this by adding a specific effect for each region, which makes the results more accurate and more reliable.
+
+### Model Assumptions Check
+
+Before interpreting the results, we need to verify that the model meets the basic statistical assumptions. This step is important because if the assumptions are violated, the results may be unreliable.
+
+```{r, fig.width=14, fig.height=12}
+library(lmerTest)
+library(modelsummary)
+library(performance)
+
+# Create ordered outcome variable
+dataset <- dataset %>%
+  mutate(
+    fin24b_ord = case_when(
+      fin24b == 1 ~ 1,
+      fin24b == 2 ~ 2,
+      fin24b == 3 ~ 3,
+      fin24b == 4 ~ 4,
+      TRUE ~ NA_real_
+    )
+  )
+
+# Convert categorical variables to factors
+dataset <- dataset %>%
+  mutate(
+    female = as.factor(female),
+    educ   = as.factor(educ),
+    inc_q  = as.factor(inc_q)
+  )
+
+# Fit the full mixed model before variable selection
+model_mixed <- lmer(
+  as.numeric(fin24b_ord) ~ preventive_risk_index + age +
+    female + educ + inc_q + (1 | regionwb),
+  data = dataset,
+)
+
+# Check model assumptions
+check_model(model_mixed)
+
+
+
+```
+
+When testing the model assumptions, the six diagnostic plots reveal the following results. Looking at the Posterior Predictive Check, the model-predicted distribution does not perfectly match the observed data. This is not surprising given that our outcome variable has only four possible values, while the model assumes a continuous distribution.Regarding linearity, the residuals are spread in horizontal bands with no clear pattern. This suggests that the relationship between the variables is reasonably linear.
+
+When it comes to the homogeneity of variance, the reference line is not perfectly flat. This points to a mild violation, but again, this is largely due to the fact that our outcome variable is discrete rather than continuous. As for influential observations, a few points fall slightly outside the contour lines. Given that the dataset contains over 144,000 observations, these points are unlikely to have any meaningful impact on the overall results.
+
+On the collinearity side, all VIF values are well below 5. This means that the explanatory variables are not strongly related to each other, so multicollinearity is not a concern here. The normality of residuals plot shows that the dots deviate from the line at both ends. This kind of deviation is common when the outcome variable takes only a limited number of values. The last plot looks at the normality of random effects. The dots follow the line closely, which confirms that the regional effects are well-behaved and normally distributed.
+
+Overall, the mild violations we observed are expected and are mainly driven by the discrete nature of the outcome variable. They do not seriously affect the validity of the results
+
+### Model Selection
+
+Once the model assumptions are verified, the next step is to identify which variables best explain financial resilience. We automatically compare all possible combinations of variables and rank them based on the AIC criterion. The model with the lowest AIC value and a delta equal to zero is considered the best model. This approach allows us to keep only the variables that genuinely contribute to explaining the outcome, and to avoid including unnecessary variables that could reduce the quality of the model.
+
+```{r}
+library(lmerTest)
+library(modelsummary)
+library(MuMIn)
+
+# Create ordered outcome variable
+dataset <- dataset %>%
+  mutate(
+    fin24b_ord = case_when(
+      fin24b == 1 ~ 1,
+      fin24b == 2 ~ 2,
+      fin24b == 3 ~ 3,
+      fin24b == 4 ~ 4,
+      TRUE ~ NA_real_
+    )
+  )
+
+# Convert categorical variables to factors
+dataset <- dataset %>%
+  mutate(
+    female = as.factor(female),
+    educ   = as.factor(educ),
+    inc_q  = as.factor(inc_q)
+  )
+
+# Remove missing values on model variables
+dataset_clean <- dataset %>%
+  filter(
+    !is.na(fin24b_ord),
+    !is.na(preventive_risk_index),
+    !is.na(age),
+    !is.na(female),
+    !is.na(educ),
+    !is.na(inc_q),
+    !is.na(regionwb)
+  )
+
+# Fit the full mixed model with na.action = na.fail (required for dredge)
+model_mixed <- lmer(
+  as.numeric(fin24b_ord) ~ preventive_risk_index + age +
+    female + educ + inc_q + (1 | regionwb),
+  data = dataset_clean,
+  na.action = na.fail
+)
+
+# Run dredge to compare all variable combinations
+dredge_results <- dredge(model_mixed)
+
+# Extract the best model
+best_model <- get.models(dredge_results, subset = 1)[[1]]
+# Extract the best model summary
+best_summary <- summary(best_model)
+
+library(knitr)
+
+# Extract model coefficients
+coef_table <- as.data.frame(best_summary$coefficients)
+
+
+# Rename the five columns
+colnames(coef_table) <- c("Estimate", "Std. Error", "df", "t-value", "p-value")
+
+# Display results using kable
+kable(
+  coef_table,
+  caption = "Table : Best model coefficients (selected by dredge)",
+  align = "c"
+)
+```
+
+The model selection process identified the best model as the one including preventive_risk_index and education as explanatory variables. This model had the lowest AICc value and a weight of 0.96, meaning it is by far the most supported by the data compared to all other combinations tested.
+
+The results show that preventive behavior has a positive and statistically significant effect on financial resilience ( 0.175, p \< 0.001). This means that households with higher levels of preventive behavior, such as saving or having insurance, tend to be able to cover their expenses for a longer period after an income shock.
+
+Education also plays an important role. Compared to the reference category, households with a medium level of education (0.091, p \< 0.001) and those with a higher level of education (0.160, p \< 0.001) show greater financial resilience. This suggests that more educated households are better equipped to manage financial difficulties.
+
+```{r}
+library(broom.mixed)
+library(ggplot2)
+
+# Fit a separate model for each region using the best model variables
+region_models <- dataset_clean %>%
+  group_by(regionwb) %>%
+  group_modify(~ tidy(lm(
+    as.numeric(fin24b_ord) ~ preventive_risk_index + educ,
+    data = .x
+  ), conf.int = TRUE)) %>%
+  filter(term == "preventive_risk_index")
+
+# Create the forest plot
+ggplot(region_models, aes(x = estimate, y = reorder(regionwb, estimate))) +
+  geom_point(size = 3, color = "steelblue") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    title = "Figure 4:Effect of preventive behavior on financial\nresilience by region",
+    x = "Coefficient estimate (preventive risk index)",
+    y = "Region"
+  ) +
+  theme_minimal()
+```
+
+The forest plot (Figure 4) reveals that the effect of preventive behavior on financial resilience is not the same across all regions. In Europe & Central Asia, the effect is the strongest and most positive, meaning that households with higher preventive behavior are significantly more resilient in this region. Middle East & North Africa, High income countries, and South Asia also show a clear positive effect, though slightly smaller. East Asia & Pacific shows a weaker but still positive effect. In contrast, Latin America & Caribbean and Sub-Saharan Africa show a negative effect, meaning that preventive behavior is actually associated with lower financial resilience in these regions. This surprising result may be explained by the fact that in these regions, households that save or pay for insurance are not necessarily better protected, possibly because financial products are less accessible or less effective.
+
+## Predictive modeling
+
+We have seen that preventive behavior is linked to financial resilience. But can our model actually predict financial resilience for new households? In this section, we test this by applying our model to data it has never seen before.
+
+Before running the predictive models, we need to adapt our outcome variable. The original variable has four categories, which makes prediction more complex. We simplify it into a binary variable: households that can cover their expenses for more than one month are classified as resilient, and those that cannot are classified as not resilient. This makes the prediction task clearer
+
+```{r}
+# Transform fin24b into a binary variable
+dataset <- dataset %>%
+  mutate(
+    resilient = case_when(
+      fin24b %in% c(3, 4) ~ "Yes",  # can cover expenses for more than one month
+      fin24b %in% c(1, 2) ~ "No",   # cannot cover expenses for more than one month
+      TRUE ~ NA_character_
+    ),
+    resilient = factor(resilient, levels = c("No", "Yes"))
+  )
+
+```
+
+Before evaluating our model, we split the dataset into a train set and a test set. 80% of the data is used to train the model, and 20% is used to test it on unseen observations. This gives us a realistic measure of how the model performs on new data.
+
+```{r}
+library(knitr)
+# Keep only complete cases for the model variables
+dataset_clean2 <- dataset %>%
+  filter(
+    !is.na(resilient),
+    !is.na(preventive_risk_index),
+    !is.na(educ),
+    !is.na(regionwb)
+  )
+
+# Set the sizes of the test and training samples
+n <- nrow(dataset_clean2)
+ntest <- round(0.2 * n)
+ntrain <- n - ntest
+
+# Split the data into two sets
+train_rows <- sample(1:n, ntrain)
+data_train <- dataset_clean2[train_rows, ]
+data_test  <- dataset_clean2[-train_rows, ]
+
+# Train the logistic regression model on the train set
+model_train <- glm(resilient ~ preventive_risk_index + educ + regionwb,
+                   data = data_train,
+                   family = binomial)
+
+# Predict on the test set with threshold 0.5
+predicted_test <- ifelse(predict(model_train, newdata = data_test, type = "response") > 0.5, "Yes", "No")
+
+# Rename the levels for clarity
+predicted_labeled <- ifelse(predicted_test == "Yes", "Resilient", "Not Resilient")
+actual_labeled <- ifelse(data_test$resilient == "Yes", "Resilient", "Not Resilient")
+
+# Create the confusion matrix
+conf_matrix <- table(Predicted = predicted_labeled, Actual = actual_labeled)
+
+# Display it nicely with kable
+kable(conf_matrix, caption = "Table: Predicted vs Actual financial resilience")
+```
+
+The Table shows that the model correctly identified 3,564 non-resilient households and 2,755 resilient households. However, it predicted 2,748 households as non-resilient when they were actually resilient, and 2,155 households as resilient when they were actually not. Overall, the model makes a lot of errors
+
+To better understand the model's performance, we now compute the full set of metrics using the confusion matrix.
+
+```{r}
+library(caret)
+
+# Convert to factors with same levels
+actual_factor    <- factor(data_test$resilient, levels = c("No", "Yes"))
+predicted_factor <- factor(predicted_test, levels = c("No", "Yes"))
+
+# Confusion matrix
+confusionMatrix(predicted_factor, actual_factor, positive = "Yes", mode = "everything")
+```
+
+The model has an accuracy of 0.56, which is only slightly better than random guessing. The Kappa score is 0.12, which confirms that the model has very little predictive power. Sensitivity is 0.50, meaning the model correctly identifies only half of the resilient households. Specificity is 0.62, so the model is slightly better at identifying non-resilient households. The F1 score is 0.53, which is quite low overall.
+
+A single train/test split depends on one random division of the data, which can give very different results each time. Cross-validation fixes this by repeating the process multiple times.
+
+We choose repeated 10-fold cross-validation over bootstrap and LOOCV for two reasons. First, our dataset has over 90,000 observations, so LOOCV would be too slow since it trains the model once for each observation. Second, bootstrap can sometimes overestimate model performance. Repeated 10-fold cross-validation is therefore the best balance between speed and reliability for a dataset of this size.
+
+```{r}
+library(caret)
+library(MLmetrics)
+
+# Define the training control with repeated 10-fold cross-validation
+train_control <- trainControl(method = "repeatedcv",
+                              number = 10,
+                              repeats = 10,
+                              classProbs = TRUE,
+                              summaryFunction = prSummary)
+
+# Train the model with cross-validation
+cv_model <- train(resilient ~ preventive_risk_index + educ + regionwb,
+                  data = dataset_clean2,
+                  method = "glm",
+                  family = "binomial",
+                  metric = "F",
+                  trControl = train_control)
+
+# Look at the results
+print(cv_model)
+```
+
+The cross-validation confirms what we found in the train/test split. The model has an AUC of 0.56, which means it is only slightly better than random guessing. Precision is 0.57, meaning that when the model predicts a household as resilient, it is correct only 57% of the time. Recall is 0.62 and the F1 score is 0.59. Overall, the model performs poorly.
+
+## Finding the Best Predictive Model: Lasso Regression
+
+So far, we tested how well our model predicts financial resilience. But we can ask a bigger question: what is the best model we can possibly build? To answer this, we use Lasso regression with many more variables. The Lasso will automatically pick the most useful ones and remove the rest.
+
+```{r}
+library(caret)
+library(MLmetrics)
+
+# Keep only complete cases for all selected variables
+dataset_lasso <- dataset %>%
+  filter(
+    !is.na(resilient),
+    !is.na(preventive_risk_index),
+    !is.na(female),
+    !is.na(age),
+    !is.na(educ),
+    !is.na(inc_q),
+    !is.na(urbanicity),
+    !is.na(account),
+    !is.na(saved),
+    !is.na(borrowed),
+    !is.na(fin17a),
+    !is.na(fin17b),
+    !is.na(fin22a),
+    !is.na(fin22b),
+    !is.na(internet_use),
+    !is.na(con1),
+    !is.na(emp_in),
+    !is.na(regionwb)
+  ) %>%
+  mutate(
+    female     = as.factor(female),
+    account    = as.factor(account),
+    saved      = as.factor(saved),
+    borrowed   = as.factor(borrowed),
+    fin17a     = as.factor(fin17a),
+    fin17b     = as.factor(fin17b),
+    fin22a     = as.factor(fin22a),
+    fin22b     = as.factor(fin22b),
+    internet_use = as.factor(internet_use),
+    con1       = as.factor(con1),
+    emp_in     = as.factor(emp_in)
+  )
+
+# Define training control
+train_control_lasso <- trainControl(method = "cv",
+                                    number = 10,
+                                    classProbs = TRUE,
+                                    summaryFunction = prSummary)
+
+# Lasso logistic regression
+m_lasso <- train(resilient ~ preventive_risk_index + female + age + educ +
+                   inc_q + urbanicity + account + saved + borrowed +
+                   fin17a + fin17b + fin22a + fin22b +
+                   internet_use + con1 + emp_in + regionwb,
+                 data = dataset_lasso,
+                 method = "glmnet",
+                 family = "binomial",
+                 tuneGrid = expand.grid(alpha = 1,
+                                        lambda = seq(0, 0.05, 0.0001)),
+                 metric = "F",
+                 trControl = train_control_lasso)
+
+# Plot the results
+library(ggplot2)
+ggplot(m_lasso, metric = "F") +
+  labs(title = "Figure: F1 Score by Lambda",
+       x = "Regularization Parameter (Lambda)",
+       y = "F1 Score (Cross-Validation)")
+```
+
+```{r}
+ggplot(m_lasso, metric = "AUC") +
+  labs(title = "Figure: AUC by Lambda",
+       x = "Regularization Parameter (Lambda)",
+       y = "AUC (Cross-Validation)")
+```
+
+The F1 plot shows that the best lambda is around 0.03, where the F1 score reaches its maximum of 0.50. Beyond this point, the model removes too many variables and performance drops quickly. The AUC plot shows a similar pattern. The AUC starts around 0.56 for small lambda values and decreases steadily as lambda increases.
+
+Overall, even the best Lasso model only reaches an F1 of 0.50 and an AUC of 0.56, which is not much better than our original model.
+
+```{r}
+library(knitr)
+# Results for the best model
+table <- m_lasso$results[which(m_lasso$results$lambda == m_lasso$bestTune$lambda), ]
+kable(table)
+```
+
+At the best lambda of 0.029, the model achieves an AUC of 0.50, a precision of 0.55, a recall of 0.46, and an F1 score of 0.50. The AUC of 0.50 means the model is no better than random guessing. The precision of 0.55 means that when the model predicts a household as resilient, it is correct only 55% of the time. The recall of 0.46 means the model only catches 46% of truly resilient households. Overall, the Lasso model does not predict financial resilience well
+
+```{r}
+library(knitr)
+
+# Extract coefficients
+lasso_coef <- as.matrix(coef(m_lasso$finalModel, m_lasso$bestTune$lambda))
+
+# Keep only non-zero coefficients
+lasso_coef_df <- data.frame(
+  Variable = rownames(lasso_coef),
+  Coefficient = round(lasso_coef[, 1], 6)
+) %>%
+  filter(Coefficient != 0)
+
+# Display with kable
+kable(lasso_coef_df, 
+      caption = "Table: Non-zero coefficients from the Lasso model",
+      row.names = FALSE)
+```
+
+The Lasso kept only 3 variables out of 17. Internet use has a small negative effect on financial resilience. Households in South Asia are less likely to be resilient compared to the reference region. Households in Sub-Saharan Africa are more likely to be resilient. All other variables, including the preventive risk index, age, income, and savings behavior, were removed by the Lasso.
+
+Overall, the predictive modelling section shows that financial resilience is hard to predict. Our base model with two variables performed poorly, and even the Lasso with many more variables did not improve much. The most important finding is that geography, particularly the region where a household lives, matters more than individual financial behaviors for predicting resilience. This suggests that structural and contextual factors play a bigger role than individual preventive behaviors.
