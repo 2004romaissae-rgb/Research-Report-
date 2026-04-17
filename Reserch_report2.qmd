@@ -490,36 +490,126 @@ ggplot(region_models, aes(x = estimate, y = reorder(regionwb, estimate))) +
 
 The forest plot (Figure 4) reveals that the effect of preventive behavior on financial resilience is not the same across all regions. In Europe & Central Asia, the effect is the strongest and most positive, meaning that households with higher preventive behavior are significantly more resilient in this region. Middle East & North Africa, High income countries, and South Asia also show a clear positive effect, though slightly smaller. East Asia & Pacific shows a weaker but still positive effect. In contrast, Latin America & Caribbean and Sub-Saharan Africa show a negative effect, meaning that preventive behavior is actually associated with lower financial resilience in these regions. This surprising result may be explained by the fact that in these regions, households that save or pay for insurance are not necessarily better protected, possibly because financial products are less accessible or less effective.
 
-## 
+## Sensitivity analyses
 
-## Predictive modeling
+At this stage, we have presented our main results. However, it is important to check whether these results are stable. For this reason, we now perform sensitivity analyses. The goal is to see if our results remain the same when we change some elements of the model. We test different specifications and use alternative versions of the data. This allows us to ensure that our results are not driven by a specific choice, but are robust.
 
-We have seen that preventive behavior is linked to financial resilience. But can our model actually predict financial resilience for new households? In this section, we test this by applying our model to data it has never seen before.
+First, we test a different model by using a logistic regression. To do this, we transform financial resilience into a binary variable. Individuals who can cover their expenses for more than one month (categories “about two months” and “more than two months”) are classified as “resilient”, while those who cannot (categories “less than two weeks” and “about one month”) are classified as “not resilient”.
 
-Before running the predictive models, we need to adapt our outcome variable. The original variable has four categories, which makes prediction more complex. We simplify it into a binary variable: households that can cover their expenses for more than one month are classified as resilient, and those that cannot are classified as not resilient. This makes the prediction task clearer
+In addition, we compare results across two versions of the dataset. The first one excludes observations with missing values, while the second one replaces missing values using an imputation method. We also include the same control variables as in the first model, namely age, gender, education, and income level.
+
+The goal is to see whether our results remain similar when we change the model and the data. This helps ensure that our findings are not driven by a specific choice, but are robust.
 
 ```{r}
 # Transform fin24b into a binary variable
 dataset <- dataset %>%
   mutate(
-    resilient = case_when(
-      fin24b %in% c(3, 4) ~ "Yes",  # can cover expenses for more than one month
-      fin24b %in% c(1, 2) ~ "No",   # cannot cover expenses for more than one month
-      TRUE ~ NA_character_
-    ),
-    resilient = factor(resilient, levels = c("No", "Yes"))
+    fin24b_binary = case_when(
+      fin24b %in% c(1, 2) ~ 0,  # low resilience
+      fin24b %in% c(3, 4) ~ 1,  # high resilience
+      TRUE ~ NA_real_
+    )
   )
+# Keep only complete cases on the variables used in the main model
+# This mirrors the dataset used in the main analysis
+dataset_original <- dataset %>%
+  filter(!is.na(fin24b) & !is.na(fin24b_binary) & !is.na(preventive_risk_index) & !is.na(educ)& !is.na(female)& !is.na(age)& !is.na(inc_q)& !is.na(regionwb))
+         
+```
+
+Deleting missing values can introduce bias if the missing data are not random. When we remove these observations, we may lose useful information. As a result, our estimates may be less accurate. To address this issue, we use an imputation method. In practice, we replace the missing values with plausible values based on the information available in the data. In this analysis, we use one imputed dataset (m = 1). This means that we create a single completed version of the dataset where missing values are filled in.
+
+We then re-estimate our main model using this imputed dataset. This allows us to include observations that were previously removed. The goal is to check whether our main results remain similar. If the results do not change much, this suggests that missing values do not strongly affect our conclusions.
+
+```{r}
+library(dplyr)
+library(mice)
+
+# Imputed dataset
+vars_to_impute <- dataset %>%
+  select(fin24b, fin24b_binary, preventive_risk_index, female, age, educ, inc_q, regionwb)
+
+imputed <- mice(vars_to_impute, m = 1, seed = 123)
+
+dataset_imputed <- complete(imputed) %>%
+  mutate(dataset_version = "imputed")
+
+# Combine both
+dataset_all <- bind_rows(dataset_original, dataset_imputed)
+
+
 
 ```
+
+```{r}
+library(specr)  
+library(dplyr) 
+setup_results <- setup(
+  data     = dataset_all,
+  y        = c("fin24b", "fin24b_binary"),  # vary the outcome
+  x        = c("preventive_risk_index"),
+  model    = c("lm", "glm"),                # lm for numeric, glm for binary
+  controls = c("female", "educ", "inc_q"),
+  subsets  = list(dataset_version = unique(dataset_all$dataset_version))
+)
+spec_results <- specr(setup_results)
+
+plot(spec_results)
+
+
+```
+
+The specification curve shows how the effect of preventive financial behaviors changes across many different models. Each point represents one model, and the vertical axis shows the value of the coefficient. We can see that the coefficient is always positive. This means that preventive behaviors are always associated with higher financial resilience. This result remains the same across all specifications.
+
+At the same time, the size of the effect changes slightly. In some models, the coefficient is around 0.10, while in others it is closer to 0.25. This variation comes from differences in the model. For example, we change the type of model, the control variables, and the version of the dataset. Moreover, the results are very similar when we use the original dataset and the imputed dataset. This suggests that missing values do not strongly affect the results.
+
+In addition, we find a positive effect both with the linear model and with the logistic regression. This shows that the result does not depend on the choice of model.
+
+Overall, the results are stable and consistent. Preventive financial behaviors have a positive effect on financial resilience in all cases. This confirms that our main finding is robust.
+
+```{r}
+library(knitr)
+library(dplyr)
+
+# Extract main results
+results_table <- as.data.frame(spec_results) %>%
+  select(model, controls, dataset_version, estimate, std.error) %>%
+  head(10)
+
+kable(
+  results_table,
+  caption = "Table 6: Selected specification results"
+)
+
+```
+
+The specification curve analysis is based on 96 different model specifications. This means that we test many combinations of models, control variables, and dataset versions. This provides a rich and comprehensive analysis of the relationship between preventive financial behavior and financial resilience.
+
+Across all these specifications, the coefficient of preventive financial behavior remains positive. The estimates range from 0.10 to 0.27, with a median value of 0.17. Even in the lowest case, where the coefficient is around 0.10, the effect remains positive. In the highest case, around 0.27, the effect is stronger, but still consistent with the same interpretation. Also at no point does the coefficient become negative. This means that preventive financial behavior is always associated with higher financial resilience.
+
+We also compare results using the original dataset and the imputed dataset. The number of observations differs across these two versions, as the original dataset excludes missing values while the imputed dataset retains them. Despite this difference, the estimated effects remain very similar. This suggests that missing values do not drive the main results.
+
+Finally, looking at individual models confirms this pattern. For example, even in a simple model without control variables, the coefficient is around 0.25. When we include control variables such as gender, or when we use the imputed dataset, the coefficient remains close, around 0.26. This shows that the result does not depend on the inclusion of controls or on the treatment of missing values.
+
+Overall, the results are stable across all specifications. The effect remains positive and relatively consistent in magnitude. This provides strong evidence that preventive financial behaviors are positively associated with financial resilience.
+
+## Predictive modeling
+
+We have seen that preventive behavior is linked to financial resilience. But can our model actually predict financial resilience for new households? In this section, we test this by applying our model to data it has never seen before.
+
+Before running the predictive models, we adapt our outcome variable. The original variable has four ordered categories, which makes prediction less straightforward. Since we use logistic regression for predictive modelling, we use the binary version of financial resilience.
+
+This transformation makes the interpretation clearer. It also avoids obtaining values such as 2.34, which would not have a clear meaning in this context. Instead, the model predicts the probability of being resilient, which is easier to interpret.
 
 Before evaluating our model, we split the dataset into a train set and a test set. 80% of the data is used to train the model, and 20% is used to test it on unseen observations. This gives us a realistic measure of how the model performs on new data.
 
 ```{r}
 library(knitr)
+library(dplyr)
 # Keep only complete cases for the model variables
 dataset_clean2 <- dataset %>%
   filter(
-    !is.na(resilient),
+    !is.na(fin24b_binary),
     !is.na(preventive_risk_index),
     !is.na(educ),
     !is.na(regionwb)
@@ -530,43 +620,76 @@ n <- nrow(dataset_clean2)
 ntest <- round(0.2 * n)
 ntrain <- n - ntest
 
+
 # Split the data into two sets
 train_rows <- sample(1:n, ntrain)
 data_train <- dataset_clean2[train_rows, ]
 data_test  <- dataset_clean2[-train_rows, ]
 
 # Train the logistic regression model on the train set
-model_train <- glm(resilient ~ preventive_risk_index + educ + regionwb,
+model_train <- glm(fin24b_binary ~ preventive_risk_index + educ + regionwb,
                    data = data_train,
                    family = binomial)
 
 # Predict on the test set with threshold 0.5
-predicted_test <- ifelse(predict(model_train, newdata = data_test, type = "response") > 0.5, "Yes", "No")
+# Predict on the test set with threshold 0.5
+predicted_test <- ifelse(
+  predict(model_train, newdata = data_test, type = "response") > 0.5, 
+  "Resilient", "Not Resilient"
+)
 
-# Rename the levels for clarity
-predicted_labeled <- ifelse(predicted_test == "Yes", "Resilient", "Not Resilient")
-actual_labeled <- ifelse(data_test$resilient == "Yes", "Resilient", "Not Resilient")
+# Fix here — compare to 1 not "Yes"
+actual_labeled <- ifelse(data_test$fin24b_binary == 1, "Resilient", "Not Resilient")
 
-# Create the confusion matrix
-conf_matrix <- table(Predicted = predicted_labeled, Actual = actual_labeled)
+# Confusion matrix
+conf_matrix <- table(Predicted = predicted_test, Actual = actual_labeled)
 
-# Display it nicely with kable
-kable(conf_matrix, caption = "Table: Predicted vs Actual financial resilience")
+library(kableExtra)
+
+kable(conf_matrix,
+      caption = "Table 7: Predicted vs Actual financial resilience",
+      col.names = c("Predicted / Actual", "Not Resilient", "Resilient"))
 ```
 
-The Table shows that the model correctly identified 3,564 non-resilient households and 2,755 resilient households. However, it predicted 2,748 households as non-resilient when they were actually resilient, and 2,155 households as resilient when they were actually not. Overall, the model makes a lot of errors
+The table shows that the model correctly classified 3,619 non-resilient households and 2,666 resilient households. However, it also made a significant number of errors. In particular, 2,813 households were predicted as non-resilient while they were actually resilient, and 2,124 households were predicted as resilient when they were not. This indicates that, although the model captures part of the relationship, its overall predictive performance remains limited, as it still misclassifies a large number of observations.
 
 To better understand the model's performance, we now compute the full set of metrics using the confusion matrix.
 
 ```{r}
 library(caret)
 
-# Convert to factors with same levels
-actual_factor    <- factor(data_test$resilient, levels = c("No", "Yes"))
-predicted_factor <- factor(predicted_test, levels = c("No", "Yes"))
+
+
+# Convert to factors with correct levels 
+actual_factor    <- factor(data_test$fin24b_binary, levels = c(0, 1))
+predicted_factor <- factor(ifelse(
+  predict(model_train, newdata = data_test, type = "response") > 0.5, 1, 0),
+  levels = c(0, 1))
 
 # Confusion matrix
-confusionMatrix(predicted_factor, actual_factor, positive = "Yes", mode = "everything")
+confusionMatrix(predicted_factor, actual_factor, positive = "1", mode = "everything")
+# Extract all metrics into a clean dataframe
+metrics <- data.frame(
+  Metric = c(
+    "Accuracy", "95% CI", "No Information Rate", "P-Value [Acc > NIR]",
+    "Kappa", "Mcnemar's Test P-Value",
+    "Sensitivity", "Specificity", "Pos Pred Value", "Neg Pred Value",
+    "Precision", "Recall", "F1", "Prevalence",
+    "Detection Rate", "Detection Prevalence", "Balanced Accuracy"
+  ),
+  Value = c(
+    "0.557", "(0.5478, 0.5663)", "0.5127", "< 2.2e-16",
+    "0.1111", "< 2.2e-16",
+    "0.4906", "0.6202", "0.5512", "0.5615",
+    "0.5512", "0.4906", "0.5191", "0.4873",
+    "0.2391", "0.4338", "0.5554"
+  )
+)
+
+kable(metrics,
+      col.names = c("Metric", "Value"),
+      caption = "Table 8: Confusion Matrix Statistics")
+
 ```
 
 The model has an accuracy of 0.56, which is only slightly better than random guessing. The Kappa score is 0.12, which confirms that the model has very little predictive power. Sensitivity is 0.50, meaning the model correctly identifies only half of the resilient households. Specificity is 0.62, so the model is slightly better at identifying non-resilient households. The F1 score is 0.53, which is quite low overall.
@@ -587,7 +710,7 @@ train_control <- trainControl(method = "repeatedcv",
                               summaryFunction = prSummary)
 
 # Train the model with cross-validation
-cv_model <- train(resilient ~ preventive_risk_index + educ + regionwb,
+cv_model <- train(fin24b_binary ~ preventive_risk_index + educ + regionwb,
                   data = dataset_clean2,
                   method = "glm",
                   family = "binomial",
