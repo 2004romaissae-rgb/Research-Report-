@@ -36,23 +36,52 @@ dataset = read_csv("findex_microdata_2025.csv")
 
 ## Introduction
 
-The Covid-19 crisis highlighted the financial vulnerability of many households, marked by job losses, lower incomes and, for some, an inability to cover essential expenses. Yet, when facing the same shock, household trajectories differ clearly, since some households manage to absorb the shock, while others quickly fall into precariousness.
+The Covid-19 crisis showed that many households are financially vulnerable. During this period, many people lost their jobs or experienced a decrease in income. At the same time, daily expenses did not disappear. As a result, some households found it difficult to cover basic needs such as food, housing or healthcare. In some cases, even a small drop in income created serious financial stress.
 
-Therefore, a central question arises, namely to what extent preventive financial risk management behaviors, such as saving or insurance, help households better withstand these shocks. Beyond its academic interest, this question is directly linked to financial inclusion policies, social protection and the growing role of financial tools in securing households’ economic trajectories.
+However, households did not react in the same way. Some were able to manage the situation and maintain a certain level of stability. Others, on the contrary, saw their financial situation deteriorate very quickly. This difference is important. It suggests that some households are better prepared than others to deal with unexpected shocks.
 
-This hypothesis is based on the idea that a household that anticipates financial risks more is, in principle, better equipped with resources or protection mechanisms when the shock occurs. It is therefore expected that a higher level of preventive risk management will be associated with a better ability of households to cope with an income shock.
+One possible explanation is the role of preventive financial behaviors. For example, saving money in advance or having insurance can help households face difficult periods. These tools can provide additional resources when income falls. They can also help households avoid reducing their consumption too quickly or falling into financial difficulty.
+
+This leads to the main question of this study: to what extent do preventive financial behaviors help households become more resilient to income shocks? This question is important not only from an academic point of view, but also for public policy. It is directly related to financial inclusion, social protection, and the role of financial tools in supporting households in times of crisis.
+
+Based on this discussion, we propose the following hypothesis:
+
+H1: households that adopt preventive financial behaviors, such as saving or having insurance, are more resilient to income shocks.
+
+This hypothesis is based on a simple idea. When households save money, they build a financial buffer that can be used in difficult times. This allows them to continue covering their basic needs even if their income falls.
+
+At the same time, insurance plays a different but complementary role. It protects households against specific risks, such as illness, accidents or loss of income. When such events occur, insurance can provide financial compensation. This reduces the need to cut consumption sharply. In this sense, insurance helps households manage uncertainty. It allows them to face unexpected events without bearing the full financial cost.
+
+On the contrary, households without savings or insurance have fewer options when a shock occurs. They may need to reduce their consumption quickly or rely on external support, which increases their vulnerability. For these reasons, we expect a positive relationship between preventive financial behaviors and financial resilience.
 
 ## Descriptive Statistics
 
-The dataset used in this study comes from the Global Findex database (World Bank, 2024). It contains 144,090 observations and includes a wide range of variables related to financial inclusion, such as savings behavior, insurance usage, and the ability to cope with financial shocks. The data covers multiple countries across different regions of the world, including Africa, Asia, Europe, and Latin America. It provides harmonized information at the individual level, allowing for cross-country comparisons of financial behavior.
+The dataset used in this study comes from the Global Findex database (World Bank, 2025). It contains 144,090 observations and includes a wide range of variables related to financial inclusion, such as savings behavior, insurance usage, and the ability to cope with financial shocks. The data covers multiple countries across different regions of the world, including Africa, Asia, Europe, and Latin America. It provides harmonized information at the individual level, allowing for cross-country comparisons of financial behavior.
 
 This study uses the variable fin24b to measure financial resilience because it shows how long a household can keep covering its expenses if it loses its main source of income. We chose this variable because it directly reflects the household’s ability to cope with an income shock.
+
+```{r}
+# Calculate the percentage of missing values in fin24b
+library(knitr)
+library(kableExtra)
+
+kable(data.frame(
+  Variable = "Financial Resilience",
+  `Percentage of missing values` = round(mean(is.na(dataset$fin24b)) * 100, 2)
+),
+caption = "Table 1: Percentage of Missing Values for Financial Resilience") %>%
+  kable_styling(full_width = FALSE, position = "center")
+```
+
+The percentage of missing values is relatively high (Table 1). Therefore, we choose to remove observations with missing values in fin24b for the analysis.
+
+Since fin24b is a categorical variable with a limited number of ordered categories, the concept of outliers, which are values that are very different from the rest of the data, is not relevant in this case. All observed values here correspond to predefined response categories, rather than extreme or abnormal observations.
 
 ```{r}
 library(tidyverse)
 library(knitr)
 
-# Recode fin24b using its value labels
+# Recode + order directly
 dataset <- dataset %>%
   mutate(
     fin24b_label = case_when(
@@ -60,43 +89,34 @@ dataset <- dataset %>%
       fin24b == 2 ~ "About one month",
       fin24b == 3 ~ "About two months",
       fin24b == 4 ~ "More than two months",
-      fin24b == 5 ~ "Don't know",
-      fin24b == 6 ~ "Refused",
       TRUE ~ NA_character_
+    ),
+    fin24b_label = factor(
+      fin24b_label,
+      levels = c(
+        "Less than two weeks",
+        "About one month",
+        "About two months",
+        "More than two months"
+      )
     )
   )
 
-# Keep only informative categories for the descriptive analysis
+# Create table
 fin24b_table <- dataset %>%
-  filter(fin24b_label %in% c(
-    "Less than two weeks",
-    "About one month",
-    "About two months",
-    "More than two months"
-  )) %>%
+  filter(!is.na(fin24b_label)) %>%
   count(fin24b_label) %>%
   mutate(
     percent = round(100 * n / sum(n), 2)
-  )
+  ) %>%
+  arrange(fin24b_label)  # ensures correct order
 
-# Order the categories
-fin24b_table$fin24b_label <- factor(
-  fin24b_table$fin24b_label,
-  levels = c(
-    "Less than two weeks",
-    "About one month",
-    "About two months",
-    "More than two months"
-  )
-)
-
-# Display the table using kable
+# Display table
 kable(
   fin24b_table,
   col.names = c("Expense coverage period", "Count", "Percentage"),
-  caption = "Table 1: Distribution of households by ability to cover expenses after an income shock"
+  caption = "Table 2: Distribution of households by ability to cover expenses after an income shock"
 )
-
 
 ```
 
@@ -148,6 +168,8 @@ dataset <- dataset %>%
 
 ```
 
+The constructed index does not contain missing values or outliers. This is because the index is built using selected variables for which missing observations have been removed. In addition, the index takes values within a limited and defined range, as it is based on a combination of binary indicators. As a result, all values fall within expected bounds and do not represent extreme or abnormal observations. Therefore, no additional treatment is required for missing values or outliers.
+
 ```{r}
 index_table_clean <- dataset %>%
   # Exclude observations with missing values for the preventive risk index
@@ -198,7 +220,7 @@ ggplot(index_table_clean, aes(x = preventive_label, y = percent)) +
   )
 ```
 
-The graph shows that most households have no preventive behavior, meaning they have neither insurance nor savings. A smaller share shows partial protection, meaning they rely on either insurance or savings, but not both. Only a very small proportion has full protection, which shows that very few households combine both insurance and savings.
+The graph shows that most households have no preventive behavior, meaning they have neither insurance nor savings (Figure 2). A smaller share shows partial protection, meaning they rely on either insurance or savings, but not both. Only a very small proportion has full protection, which shows that very few households combine both insurance and savings.
 
 ```{r}
 library(tidyverse)
@@ -212,6 +234,16 @@ dataset <- dataset %>%
       fin24b == 3 ~ "About two months",
       fin24b == 4 ~ "More than two months",
       TRUE ~ NA_character_
+    ),
+    # Set the order of categories (very important for the plot)
+    fin24b_label = factor(
+      fin24b_label,
+      levels = c(
+        "Less than two weeks",
+        "About one month",
+        "About two months",
+        "More than two months"
+      )
     ),
     preventive_label = case_when(
       preventive_risk_index == 0   ~ "No\npreventive\nbehavior",
@@ -260,9 +292,19 @@ ggplot(plot_data, aes(x = fin24b_label, y = percent, fill = fin24b_label)) +
 
 The Figure 3 shows a clear link between preventive behavior and financial resilience. As we move from no preventive behavior to full preventive behavior, the share of households that can cover expenses for more than two months increases. At the same time, the share of households that can cover less than two weeks decreases. This means that households with no protection are more vulnerable, while those with both insurance and savings are better prepared for an income shock.
 
+In order to better isolate the effect of preventive financial behaviors on financial resilience, we include age, education, income and gender as control variables. These variables are chosen because they can influence both financial resilience and preventive financial behaviors.
+
+First, income plays a key role. Households with higher income are more likely to save or purchase insurance. As a result, they are also better able to cope with income shocks, since they have more resources to rely on. In addition, education is important. More educated individuals may have better financial knowledge. Therefore, they are more likely to adopt preventive behaviors such as saving or using insurance. At the same time, they may be better prepared to manage financial difficulties, which improves their resilience.
+
+Moreover, age may affect both dimensions. Older individuals may have had more time to accumulate savings and gain financial experience. Consequently, they may be more likely to adopt preventive behaviors and better able to deal with shocks. Finally, gender can also play a role. Differences in access to financial services, employment opportunities or income levels may influence both the use of financial tools and the ability to cope with shocks.
+
+Overall, these variables appear relevant at first glance. However, we will perform a model selection process to identify the most appropriate set of variables and ensure that the final model is well specified.
+
 ## Statistical Inference
 
-To analyze the link between preventive financial behaviors and household resilience, we use a linear mixed regression. Linear regression is a statistical method that measures how much one variable explains another. It fits our case well for two reasons. First, our outcome variable, financial resilience, is measured on a scale that goes from "less than two weeks" to "more than two months". This scale follows a clear and logical order, which allows us to treat it as a numeric variable. Second, our goal is to measure the effect of preventive behavior on this scale, which is exactly what linear regression does. We use a "mixed" version of this model because our data covers several regions of the world. Two households living in the same region tend to be more similar to each other than two households living in different regions. The mixed model accounts for this by adding a specific effect for each region, which makes the results more accurate and more reliable.
+To analyze the link between preventive financial behaviors and household resilience, we use a linear mixed regression. Linear regression is a statistical method that measures how much one variable explains another. It fits our case well for two reasons. First, our outcome variable, financial resilience, is measured on a scale that goes from "less than two weeks" to "more than two months". This scale follows a clear and logical order, which allows us to treat it as a numeric variable. Second, our goal is to measure the effect of preventive behavior on this scale, which is exactly what linear regression does.
+
+We use a "mixed" version of this model because our data covers several regions of the world. Two households living in the same region tend to be more similar to each other than two households living in different regions. The mixed model accounts for this by adding a specific effect for each region, which makes the results more accurate and more reliable.
 
 ### Model Assumptions Check
 
@@ -323,6 +365,7 @@ Once the model assumptions are verified, the next step is to identify which vari
 library(lmerTest)
 library(modelsummary)
 library(MuMIn)
+library(knitr)
 
 # Create ordered outcome variable
 dataset <- dataset %>%
@@ -366,7 +409,19 @@ model_mixed <- lmer(
 
 # Run dredge to compare all variable combinations
 dredge_results <- dredge(model_mixed)
+kable(dredge_results,
+      caption = "Table 3: Comparison of different models explaining financial resilience")
 
+
+```
+
+Table 3 compares different models using AICc. A lower AICc means a better model. In this case, the best model is the one with the lowest AICc and the highest weight. This model includes the preventive risk index and education.
+
+In addition, the delta value shows how far each model is from the best model. When the delta is small, the model is close to the best one. On the contrary, a large delta means that the model fits the data less well. Here, the first model has a delta equal to zero, which confirms that it is the best. Moreover, the weight indicates how likely each model is to be the best among all models. The first model has the highest weight, so it is the most supported by the data.
+
+Overall, this suggests that preventive financial behaviors and education are important to explain financial resilience. However, adding other variables such as age, income or gender does not improve the model significantly.
+
+```{r}
 # Extract the best model
 best_model <- get.models(dredge_results, subset = 1)[[1]]
 # Extract the best model summary
@@ -384,16 +439,28 @@ colnames(coef_table) <- c("Estimate", "Std. Error", "df", "t-value", "p-value")
 # Display results using kable
 kable(
   coef_table,
-  caption = "Table : Best model coefficients (selected by dredge)",
+  caption = "Table 4 : Best model coefficients (selected by dredge)",
   align = "c"
 )
 ```
 
-The model selection process identified the best model as the one including preventive_risk_index and education as explanatory variables. This model had the lowest AICc value and a weight of 0.96, meaning it is by far the most supported by the data compared to all other combinations tested.
+```{r}
+library(modelsummary)
+Best_model <- lmer(
+  as.numeric(fin24b_ord) ~ preventive_risk_index  + educ + (1 | regionwb),
+  data = dataset_clean,
+)
+modelsummary(model_mixed,
+             title = "Table 5:  Results of the best model")
+```
 
-The results show that preventive behavior has a positive and statistically significant effect on financial resilience ( 0.175, p \< 0.001). This means that households with higher levels of preventive behavior, such as saving or having insurance, tend to be able to cover their expenses for a longer period after an income shock.
+Table 4 and 5 show the results of the main model. The coefficient of the preventive risk index is positive (0.175), and statistically significant, means that when the preventive risk index increases by one unit, financial resilience increases by 0.175. In simple terms, households that adopt more preventive behaviors, such as saving or having insurance, tend to have a slightly higher level of financial resilience. This result is consistent with our initial hypothesis, which suggests that preventive financial behaviors improve households’ ability to cope with income shocks.
 
-Education also plays an important role. Compared to the reference category, households with a medium level of education (0.091, p \< 0.001) and those with a higher level of education (0.160, p \< 0.001) show greater financial resilience. This suggests that more educated households are better equipped to manage financial difficulties.
+Education also has a positive effect. Compared to the reference group, individuals with medium education (educ2) have a higher resilience (0.091). Those with higher education (educ3) have an even stronger effect (0.160). This suggests that education helps people manage financial difficulties better.
+
+However, the R² is low (0.005). This means that the variables explain only a small part of financial resilience. When we include regional differences, the R² increases to 0.038, but it is still low.
+
+It is important to look more closely at how this effect varies across regions. The following Figure explores these differences in more detail.
 
 ```{r}
 library(broom.mixed)
@@ -422,6 +489,8 @@ ggplot(region_models, aes(x = estimate, y = reorder(regionwb, estimate))) +
 ```
 
 The forest plot (Figure 4) reveals that the effect of preventive behavior on financial resilience is not the same across all regions. In Europe & Central Asia, the effect is the strongest and most positive, meaning that households with higher preventive behavior are significantly more resilient in this region. Middle East & North Africa, High income countries, and South Asia also show a clear positive effect, though slightly smaller. East Asia & Pacific shows a weaker but still positive effect. In contrast, Latin America & Caribbean and Sub-Saharan Africa show a negative effect, meaning that preventive behavior is actually associated with lower financial resilience in these regions. This surprising result may be explained by the fact that in these regions, households that save or pay for insurance are not necessarily better protected, possibly because financial products are less accessible or less effective.
+
+## 
 
 ## Predictive modeling
 
